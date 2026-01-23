@@ -10,8 +10,10 @@ const nextConfig = {
     }
     return config;
   },
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  // Note: The 'eslint' block is gone from here!
 };
 
 export default nextConfig;
