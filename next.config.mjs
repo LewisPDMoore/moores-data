@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Add this line to satisfy the new build engine
+  turbopack: {}, 
+  
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -12,8 +15,7 @@ const nextConfig = {
   },
   typescript: {
     ignoreBuildErrors: true,
-  },
-  // Note: The 'eslint' block is gone from here!
+  }
 };
 
 export default nextConfig;
