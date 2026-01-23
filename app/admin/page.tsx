@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useRef, useState } from 'react';
-import * as faceapi from 'face-api.js';
+import * as faceapi from '@vladmandic/face-api';
 import { createClient } from '@supabase/supabase-js';
 
+// Initialize Supabase (Ensure these match your Vercel Env Variables)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -10,95 +12,92 @@ const supabase = createClient(
 
 export default function AdminProfiler() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState("Initializing System...");
   const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
-    loadModels();
+    async function loadModelsAndStart() {
+      try {
+        // Load models from your public/models folder
+        await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+        await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+        
+        setStatus("System Online. Awaiting Scan...");
+        startVideo();
+      } catch (err) {
+        setStatus("Error Loading Models");
+        console.error(err);
+      }
+    }
+    loadModelsAndStart();
   }, []);
 
-  async function loadModels() {
-    const MODEL_URL = '/models';
-    await Promise.all([
-      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ]);
-    setStatus("MooresData Online - Awaiting Target");
-    startVideo();
-  }
-
-  function startVideo() {
-    // Note: 'facingMode: user' ensures it uses the front camera on mobile
+  const startVideo = () => {
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-      .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
-      .catch(() => setStatus("Camera Access Denied"));
-  }
+      .then((stream) => {
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      })
+      .catch((err) => setStatus("Camera Access Denied"));
+  };
 
-  async function handleScan() {
+  const handleScan = async () => {
     if (!videoRef.current) return;
-    setStatus("Scanning Face...");
-    
+    setStatus("Scanning...");
+
     const detection = await faceapi.detectSingleFace(videoRef.current)
       .withFaceLandmarks()
       .withFaceDescriptor();
 
     if (detection) {
-      // Search Supabase for the match using the SQL function you ran earlier
-      const { data, error } = await supabase.rpc('match_profiles', {
-        query_embedding: Array.from(detection.descriptor),
+      const descriptor = Array.from(detection.descriptor);
+      
+      // Query Supabase for a match
+      const { data, error } = await supabase.rpc('match_face', {
+        query_embedding: descriptor,
         match_threshold: 0.5,
         match_count: 1
       });
 
       if (data && data.length > 0) {
         setProfile(data[0]);
-        setStatus("Target Identified");
+        setStatus("Identity Confirmed");
       } else {
-        setStatus("Unknown Entity - Enroll via Database");
+        setStatus("Unknown Entity Detected");
       }
     } else {
       setStatus("No Face Detected");
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-black text-blue-400 font-mono p-4 md:p-10 flex flex-col items-center">
-      <header className="w-full max-w-4xl border-b border-blue-900 mb-6 flex justify-between items-center pb-2">
-        <h1 className="text-xl md:text-3xl font-bold tracking-tighter">MOORESDATA // PROFILER</h1>
-        <div className="text-[10px] md:text-xs text-blue-700 animate-pulse">ENCRYPTION_ACTIVE</div>
-      </header>
-
-      {/* Responsive Camera Container */}
-      <div className="relative w-full max-w-[640px] aspect-video border-2 border-blue-500 shadow-[0_0_20px_rgba(0,100,255,0.3)] bg-gray-900 overflow-hidden">
-        <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover grayscale contrast-125" />
-        <div className="absolute inset-0 pointer-events-none border-[0.5px] border-blue-500/20 opacity-30"></div>
-        <div className="absolute top-4 left-4 text-[10px] text-blue-500 bg-black/50 p-1">REC: 00:24:13:00</div>
-      </div>
-
-      {/* Profiler Results Card */}
-      <div className="w-full max-w-[640px] mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="border border-blue-800 p-4 bg-blue-950/10">
-          <h2 className="text-xs text-blue-600 mb-1 font-bold italic">SYSTEM_STATUS</h2>
-          <p className="text-white text-sm uppercase">{status}</p>
+    <div className="min-h-screen bg-black text-cyan-400 p-4 font-mono">
+      <div className="border-2 border-cyan-900 p-4 rounded-lg bg-gray-900 shadow-[0_0_20px_rgba(0,255,255,0.2)]">
+        <h1 className="text-2xl mb-4 border-b border-cyan-900 pb-2">CTOS PROFILER // ADMIN_ACCESS</h1>
+        
+        <div className="relative mb-4 overflow-hidden rounded border border-cyan-500">
+          <video ref={videoRef} autoPlay muted className="w-full h-auto" />
+          <div className="absolute top-0 left-0 w-full h-full pointer-events-none border-[20px] border-transparent shadow-[inset_0_0_60px_rgba(0,255,255,0.3)]"></div>
         </div>
 
-        {profile && (
-          <div className="border border-green-800 p-4 bg-green-950/10 animate-in fade-in duration-500">
-            <h2 className="text-xs text-green-600 mb-1 font-bold italic">MATCH_FOUND</h2>
-            <p className="text-white text-lg font-bold uppercase">{profile.full_name}</p>
-            <p className="text-green-400 text-xs mt-1">Status: {profile.budget_status}</p>
-          </div>
-        )}
-      </div>
+        <div className="mb-4 space-y-2">
+          <p className="text-sm uppercase tracking-widest">System_Status: <span className="text-white">{status}</span></p>
+          {profile && (
+            <div className="p-3 border border-cyan-500 bg-cyan-950/30 animate-pulse">
+              <p>NAME: {profile.full_name}</p>
+              <p>OCCUPATION: {profile.occupation}</p>
+              <p>STATUS: {profile.budget_status}</p>
+            </div>
+          )}
+        </div>
 
-      <button 
-        onClick={handleScan}
-        className="mt-8 w-full max-w-[640px] py-4 bg-blue-950 border border-blue-500 hover:bg-blue-800 text-white font-bold uppercase tracking-widest transition-all"
-      >
-        Execute Recognition Protocol
-      </button>
+        <button 
+          onClick={handleScan}
+          className="w-full py-3 bg-cyan-700 hover:bg-cyan-500 text-black font-bold uppercase tracking-widest transition-colors"
+        >
+          Initiate Scan
+        </button>
+      </div>
     </div>
   );
 }
